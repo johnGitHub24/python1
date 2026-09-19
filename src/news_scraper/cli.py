@@ -1,10 +1,10 @@
 """
-命令列入口
-==========
-用法範例：
-  python -m src.news_scraper.cli --url https://example.com/feed.xml -o out/news.jsonl
-  python -m src.news_scraper.cli --demo -q "測試" -o out/demo.jsonl
-  python -m src.news_scraper.cli --search-file out/demo.jsonl -q "Loop"
+命令列入口（CLI）
+================
+【初學者導讀】本檔核心語法：
+- argparse：把「終端機參數」變成 Python 變數
+- if / elif / else 流程分支
+- if __name__ == "__main__": 腳本直接執行的入口
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from .search import search_articles
 from .storage import JsonLinesStore
 
 
+# 【語法】三引號 """...""" 可寫跨很多行的字串（這裡放示範用 RSS XML）。
 DEMO_RSS = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
@@ -40,8 +41,12 @@ DEMO_RSS = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """建立命令列參數解析器。"""
     parser = argparse.ArgumentParser(description="新聞資訊爬蟲（教學版）")
+    # 【語法】action="append"：同樣參數可出現多次，結果會是 list。
+    # 例：--url a --url b → args.url == ["a", "b"]
     parser.add_argument("--url", action="append", default=[], help="RSS 或 HTML 列表 URL，可重複")
+    # 【語法】action="store_true"：有帶這個旗標就是 True，沒帶就是 False。
     parser.add_argument("--demo", action="store_true", help="使用內建示範 RSS（不連外網）")
     parser.add_argument(
         "--search-file",
@@ -70,13 +75,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_fields(raw: str) -> tuple[str, ...]:
+    # 【語法】tuple(... for ...) 建立 tuple；or 用來提供後備預設值。
     fields = tuple(part.strip() for part in raw.split(",") if part.strip())
     return fields or ("title", "summary", "source", "tags")
 
 
 def _print_articles(articles: list, *, label: str, output: Path | None = None) -> None:
+    # 【語法】f-string 裡可以放運算式，例如 len(articles)。
     suffix = f" → {output}" if output is not None else ""
     print(f"{label} {len(articles)} 則新聞{suffix}")
+    # 【語法】切片 articles[:5] 最多取前 5 筆（不足 5 筆就全拿）。
     for article in articles[:5]:
         print(f"  - {article.title}")
     if len(articles) > 5:
@@ -84,15 +92,21 @@ def _print_articles(articles: list, *, label: str, output: Path | None = None) -
 
 
 def main(argv: list[str] | None = None) -> int:
+    """
+    程式主流程；回傳「結束代碼」。
+
+    【語法】慣例：return 0 代表成功；非 0 代表失敗（給終端機／腳本判斷）。
+    """
+    # 【語法】parse_args(argv) 解析參數；argv 為 None 時自動讀 sys.argv。
     args = build_parser().parse_args(argv)
     output = Path(args.output)
     fields = _parse_fields(args.fields)
     scraper = NewsScraper()
 
     if args.search_file:
-        # 【註解教學】離線搜尋：不連網，只讀 JSONL。
         path = Path(args.search_file)
         if not path.exists():
+            # 【語法】file=sys.stderr：錯誤訊息印到「標準錯誤」，不跟一般輸出混在一起。
             print(f"找不到檔案: {path}", file=sys.stderr)
             return 2
         if not args.query.strip():
@@ -109,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.demo:
-        # 【註解教學】demo 模式直接解析字串，方便離線教學與 harness。
+        # 【語法】函式內部 import：只有走到這個分支才載入，可稍微加快啟動。
         from .parser import RssParser
 
         articles = RssParser().parse(DEMO_RSS, source=args.source or "demo")
@@ -138,5 +152,9 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+# 【語法】這一段非常常見：
+# 直接執行本檔（python -m src.news_scraper.cli）時 __name__ 會是 "__main__"；
+# 被別人 import 時則不會是 "__main__"，就不會自動跑 main()。
 if __name__ == "__main__":
+    # 【語法】SystemExit(數字) 讓行程以該結束碼結束。
     raise SystemExit(main())
