@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>新聞爬蟲教學｜單元／整合測試與 Loop-Verify-Debug</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#d9efe8",
+        primaryTextColor: "#12352c",
+        primaryBorderColor: "#2a6b58",
+        lineColor: "#3d5a50",
+        secondaryColor: "#f3efe6",
+        tertiaryColor: "#eef6f3",
+        fontFamily: "Source Han Sans TC, Noto Sans TC, Segoe UI, sans-serif"
+      }
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #1c2b26;
+      --muted: #4d635a;
+      --paper: #f7f4ee;
+      --panel: #fffdf8;
+      --accent: #1f6b57;
+      --accent-2: #b45309;
+      --line: #d7d0c3;
+      --code-bg: #16241f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans TC", "Source Han Sans TC", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #dceee7 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #efe4d2 0%, transparent 50%),
+        var(--paper);
+      line-height: 1.7;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    header.hero {
+      padding: 2rem 0 1.5rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 2rem;
+    }
+    .brand {
+      font-family: "Georgia", "Noto Serif TC", serif;
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      letter-spacing: 0.02em;
+      color: var(--accent);
+      margin: 0 0 0.5rem;
+    }
+    .lede { color: var(--muted); margin: 0; max-width: 42rem; }
+    nav.toc {
+      display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
+      margin: 1.25rem 0 0; font-size: 0.95rem;
+    }
+    nav.toc a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted #8fb5a8; }
+    nav.toc a:hover { border-bottom-style: solid; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.25rem 1.35rem 1.5rem;
+      margin: 1.25rem 0;
+      box-shadow: 0 8px 24px rgba(28, 43, 38, 0.04);
+    }
+    h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.35rem;
+      color: var(--accent);
+      border-left: 4px solid var(--accent);
+      padding-left: 0.65rem;
+    }
+    h3 { margin: 1.25rem 0 0.5rem; font-size: 1.05rem; }
+    p, li { color: var(--ink); }
+    .muted { color: var(--muted); }
+    .mermaid {
+      background: #f3f8f5;
+      border: 1px dashed #b7cfc5;
+      border-radius: 10px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+    pre, code {
+      font-family: "Cascadia Code", "Consolas", "Noto Sans Mono", monospace;
+      font-size: 0.9rem;
+    }
+    pre {
+      background: var(--code-bg);
+      color: #e7f2ec;
+      padding: 1rem 1.1rem;
+      border-radius: 10px;
+      overflow-x: auto;
+    }
+    code.inline {
+      background: #e8f0ec;
+      color: #184437;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.75rem 0 0.25rem;
+      font-size: 0.95rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0.55rem 0.65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #eef6f2; }
+    .callout {
+      border-left: 4px solid var(--accent-2);
+      background: #fff7ed;
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1rem 0;
+    }
+    footer {
+      margin-top: 2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <p class="brand">NewsScraper Lab</p>
+      <p class="lede">
+        本頁指導如何以 Python 撰寫新聞資訊爬蟲，搭配單元／整合測試，
+        並用 Harness 實踐 <strong>Loop → Verify → Debug</strong> 工程迴圈。
+      </p>
+      <nav class="toc" aria-label="章節">
+        <a href="#arch">架構流程</a>
+        <a href="#search">搜尋功能</a>
+        <a href="#tdd">測試策略</a>
+        <a href="#comments">註解教學</a>
+        <a href="#harness">Harness 迴圈</a>
+        <a href="#run">動手執行</a>
+      </nav>
+    </header>
+
+    <section id="arch">
+      <h2>1. 系統架構與資料流</h2>
+      <p class="muted">爬蟲拆成：擷取 → 解析 → 去重 → 搜尋 → 儲存。協調器只編排流程。</p>
+      <div class="mermaid">
+flowchart LR
+  A[URL 清單] --> B[HttpFetcher]
+  B --> C{Content-Type?}
+  C -->|RSS/Atom| D[RssParser]
+  C -->|HTML| E[HtmlListParser]
+  D --> F[dedupe_by_url]
+  E --> F
+  F --> S[search_articles]
+  S --> G[NewsArticle 列表]
+  G --> H[JsonLinesStore]
+  H --> I[news.jsonl]
+      </div>
+      <div class="mermaid">
+sequenceDiagram
+  participant CLI
+  participant Scraper
+  participant Fetcher
+  participant Parser
+  participant Store
+  CLI->>Scraper: scrape_and_save(urls)
+  Scraper->>Fetcher: get(url)
+  Fetcher-->>Scraper: text + content_type
+  Scraper->>Parser: detect_and_parse(...)
+  Parser-->>Scraper: articles
+  Scraper->>Store: save(articles)
+  Store-->>CLI: 寫入 JSONL
+      </div>
+    </section>
+
+    <section id="search">
+      <h2>1.5 搜尋功能</h2>
+      <p class="muted">爬取後可依關鍵字篩選；也可對既有 JSONL 離線搜尋。</p>
+      <div class="mermaid">
+flowchart TD
+  A[新聞列表] --> B{有 query?}
+  B -->|否| C[回傳全部]
+  B -->|是| D[拆關鍵字]
+  D --> E{match_all?}
+  E -->|是| F[每個詞都要命中]
+  E -->|否| G[任一詞命中即可]
+  F --> H[命中列表]
+  G --> H
+      </div>
+      <pre>py -3 -m src.news_scraper.cli --demo -q "測試" -o out/hits.jsonl
+py -3 -m src.news_scraper.cli --search-file out/demo.jsonl -q "Loop Debug" --match-all
+py -3 -m src.news_scraper.cli --demo -q "python" --fields tags</pre>
+      <ul>
+        <li>預設搜尋欄位：title、summary、source、tags（不分大小寫）</li>
+        <li>多關鍵字預設「任一命中」；加 <code class="inline">--match-all</code> 改為「全部命中」</li>
+        <li>模組：<code class="inline">src/news_scraper/search.py</code></li>
+      </ul>
+    </section>
+
+    <section id="tdd">
+      <h2>2. 單元測試與整合測試</h2>
+      <table>
+        <thead>
+          <tr><th>類型</th><th>範圍</th><th>外網</th><th>範例</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>單元測試 <code class="inline">@pytest.mark.unit</code></td>
+            <td>單一函式／類別</td>
+            <td>否（fixture／fake）</td>
+            <td><code class="inline">tests/unit/test_parser.py</code></td>
+          </tr>
+          <tr>
+            <td>整合測試 <code class="inline">@pytest.mark.integration</code></td>
+            <td>Fetcher + Parser + Store 管線</td>
+            <td>否（本機 HTTPServer）</td>
+            <td><code class="inline">tests/integration/test_pipeline.py</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="mermaid">
+flowchart TD
+  S[寫規格 / 失敗測試] --> R[實作最小程式]
+  R --> U[跑單元測試]
+  U -->|失敗| D[Debug 單一層]
+  D --> R
+  U -->|通過| I[跑整合測試]
+  I -->|失敗| D2[Debug 介面契約]
+  D2 --> R
+  I -->|通過| Done[可交付 / 重構]
+      </div>
+      <div class="callout">
+        <strong>原則：</strong>單元測「規則」，整合測「接線」。不要在單元測試打真實新聞網站。
+      </div>
+    </section>
+
+    <section id="comments">
+      <h2>3. 程式註解教學</h2>
+      <p>好的註解解釋<strong>為什麼</strong>與<strong>契約</strong>，不複述程式已能看出的「做了什麼」。</p>
+      <table>
+        <thead>
+          <tr><th>類型</th><th>用途</th><th>本專案範例</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>模組 docstring</td>
+            <td>說明職責與設計意圖</td>
+            <td><code class="inline">parser.py</code> 開頭「解析與擷取分離」</td>
+          </tr>
+          <tr>
+            <td>類別／函式 docstring</td>
+            <td>參數、回傳、例外契約</td>
+            <td><code class="inline">NewsArticle</code>、<code class="inline">HttpFetcher.get</code></td>
+          </tr>
+          <tr>
+            <td>行內教學註解</td>
+            <td>標示學習點（【註解教學】）</td>
+            <td>依賴注入、資料驗證、demo 模式</td>
+          </tr>
+          <tr>
+            <td>測試名稱</td>
+            <td>本身就是可讀規格</td>
+            <td><code class="inline">test_rss_parser_skips_empty_title</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>建議寫法</h3>
+<pre># 好：說明約束與原因
+# 依賴注入：測試可傳入 fake fetcher，避免連外網。
+self.fetcher = fetcher or HttpFetcher()
+
+# 差：複述語意
+# 把 fetcher 存到 self.fetcher
+self.fetcher = fetcher or HttpFetcher()</pre>
+      <h3>註解檢查清單</h3>
+      <ul>
+        <li>公開 API 是否有 docstring（參數／回傳／例外）？</li>
+        <li>非直覺行為（去重、時區、HTML 剝除）是否有說明？</li>
+        <li>是否避免過期註解？程式變了註解要一起改。</li>
+      </ul>
+    </section>
+
+    <section id="harness">
+      <h2>4. Harness &amp; Loop Engineering</h2>
+      <p>
+        Harness（測試鞍具）把「跑測試 → 判斷結果 → 給除錯提示 → 再跑」固化成可重複腳本，
+        對應工程迴圈 <strong>Loop → Verify → Debug</strong>。
+      </p>
+      <div class="mermaid">
+stateDiagram-v2
+  [*] --> Loop
+  Loop --> Verify: 執行 pytest
+  Verify --> Pass: exit_code == 0
+  Verify --> Debug: exit_code != 0
+  Debug --> Loop: 依 hints 修正後重試
+  Pass --> [*]: 寫入 harness 報告
+  note right of Debug
+    常見 hints：
+    缺套件 / AssertionError /
+    連線逾時 / 權限
+  end note
+      </div>
+      <pre>python harness/loop_verify_debug.py --cov
+python harness/loop_verify_debug.py --unit-only --max-loops 3
+python harness/loop_verify_debug.py --once</pre>
+      <p class="muted">報告輸出：<code class="inline">out/harness/last_run.json</code></p>
+    </section>
+
+    <section id="run">
+      <h2>5. 動手執行</h2>
+      <ol>
+        <li>安裝依賴：<code class="inline">pip install -r requirements.txt</code></li>
+        <li>離線示範：<code class="inline">python -m src.news_scraper.cli --demo -o out/demo.jsonl</code></li>
+        <li>關鍵字搜尋：<code class="inline">python -m src.news_scraper.cli --demo -q "Loop" -o out/hits.jsonl</code></li>
+        <li>單元測試：<code class="inline">pytest -m unit</code></li>
+        <li>整合測試：<code class="inline">pytest -m integration</code></li>
+        <li>完整 harness：<code class="inline">python harness/loop_verify_debug.py --cov</code></li>
+      </ol>
+      <div class="callout">
+        爬取公開網站前請遵守 robots.txt、服務條款，並控制頻率；教學預設使用 fixture／本機 server。
+      </div>
+    </section>
+
+    <footer>
+      NewsScraper Lab · 教學專案 · Loop → Verify → Debug
+    </footer>
+  </div>
+</body>
+</html>
